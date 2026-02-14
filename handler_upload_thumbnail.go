@@ -4,10 +4,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime"
 	"net/http"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -46,9 +45,14 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 	defer file.Close()
 
-	contentType := header.Header.Get("Content-Type")
-	if contentType == "" {
-		respondWithError(w, http.StatusBadRequest, "Missing media type", nil)
+	mediaType, _, err := mime.ParseMediaType(header.Header.Get("Content-Type"))
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Malformend content type", err)
+		return
+	}
+
+	if mediaType != "image/jpeg" || mediaType != "image/png" {
+		respondWithError(w, http.StatusBadRequest, "Wrong file format", nil)
 		return
 	}
 
@@ -63,17 +67,10 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	splitContentType := strings.Split(contentType, "/")
-	extension := fmt.Sprintf(".%s", splitContentType[len(splitContentType)-1])
-	if extension == "" {
-		respondWithError(w, http.StatusBadRequest, "Malformed content type", nil)
-		return
-	}
-	thumbnailFileName := videoIDString + extension
+	assetPath := getAssetPath(videoID, mediaType)
+	assetDiskPath := cfg.getAssetDiskPath(assetPath)
 
-	filePath := filepath.Join(cfg.assetsRoot, thumbnailFileName)
-	log.Printf("Created file %s", filePath)
-	newFile, err := os.Create(filePath)
+	newFile, err := os.Create(assetDiskPath)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error creating thumbnail file", err)
 		return
@@ -87,13 +84,12 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 	log.Printf("Copied bytes: %d", copiedBytes)
 
-	newURL := fmt.Sprintf("http://localhost:%s/assets/%s", cfg.port, thumbnailFileName)
+	newURL := cfg.getAssetURL(assetPath)
 
 	video.ThumbnailURL = &newURL
 
 	err = cfg.db.UpdateVideo(video)
 	if err != nil {
-		delete(videoThumbnails, videoID)
 		respondWithError(w, http.StatusInternalServerError, "Error updating video data", err)
 		return
 	}
