@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"log"
 	"mime"
 	"net/http"
 	"os"
@@ -51,7 +50,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if mediaType != "image/jpeg" || mediaType != "image/png" {
+	if mediaType != "image/jpeg" && mediaType != "image/png" {
 		respondWithError(w, http.StatusBadRequest, "Wrong file format", nil)
 		return
 	}
@@ -67,7 +66,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	assetPath := getAssetPath(videoID, mediaType)
+	assetPath := getAssetPath(mediaType)
 	assetDiskPath := cfg.getAssetDiskPath(assetPath)
 
 	newFile, err := os.Create(assetDiskPath)
@@ -77,12 +76,11 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 	defer newFile.Close()
 
-	copiedBytes, err := io.Copy(newFile, file)
+	_, err = io.Copy(newFile, file)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error creating thumbnail file", err)
 		return
 	}
-	log.Printf("Copied bytes: %d", copiedBytes)
 
 	newURL := cfg.getAssetURL(assetPath)
 
